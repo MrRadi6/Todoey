@@ -11,8 +11,13 @@ import UIKit
 class ToDoListViewController: UITableViewController {
 
     var itemArray = ["Item_1","Item_2","Item_3"]
+    var defaults = UserDefaults.standard
+    
     override func viewDidLoad() {
         super.viewDidLoad()
+        if let userItems = defaults.array(forKey: "UserItemList") as? [String]{
+            itemArray = userItems
+        }
         // Do any additional setup after loading the view, typically from a nib.
     }
     
@@ -49,6 +54,7 @@ class ToDoListViewController: UITableViewController {
             print("action triggered")
             self.itemArray.append(textField.text!)
             self.tableView.reloadData()
+            self.defaults.set(self.itemArray, forKey: "UserItemList")
             print(self.itemArray.last!)
         }
         
