@@ -8,16 +8,19 @@
 
 import UIKit
 
-class ToDoListViewController: UITableViewController {
+class ToDoListViewController: UITableViewController{
 
-    var itemArray = ["Item_1","Item_2","Item_3"]
-    var defaults = UserDefaults.standard
+    var itemArray: [Data] = []
+    let dataFilePath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.appendingPathComponent("Items.plist")
+   // var defaults = UserDefaults.standard
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        if let userItems = defaults.array(forKey: "UserItemList") as? [String]{
+        print(dataFilePath!)
+        
+       /* if let userItems = defaults.array(forKey: "UserItemList") as? [Data]{
             itemArray = userItems
-        }
+        }*/
         // Do any additional setup after loading the view, typically from a nib.
     }
     
@@ -29,19 +32,17 @@ class ToDoListViewController: UITableViewController {
     
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "listItem", for: indexPath)
-        cell.textLabel?.text = itemArray[indexPath.row]
+        let item = itemArray[indexPath.row]
+        cell.textLabel?.text = item.item
+        cell.accessoryType = item.isChecked ? .checkmark : .none
         return cell
     }
     
     //MARK: tableView cell tap on
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        if tableView.cellForRow(at: indexPath)?.accessoryType == .checkmark{
-            tableView.cellForRow(at: indexPath)?.accessoryType = .none
-        }
-        else{
-            tableView.cellForRow(at: indexPath)?.accessoryType = .checkmark
-        }
+        itemArray[indexPath.row].isChecked = !itemArray[indexPath.row].isChecked
+        savaData()
         print(itemArray[indexPath.row])
     }
     
@@ -52,9 +53,9 @@ class ToDoListViewController: UITableViewController {
         let addNewAlert = UIAlertController(title: "Add New Item", message: nil, preferredStyle: .alert)
         let addNewAction = UIAlertAction(title: "ADD NEW", style: .default) {   (action) in
             print("action triggered")
-            self.itemArray.append(textField.text!)
-            self.tableView.reloadData()
-            self.defaults.set(self.itemArray, forKey: "UserItemList")
+            self.itemArray.append(Data(item: textField.text!,isChecked: false))
+            self.savaData()
+           // self.defaults.set(self.itemArray, forKey: "UserItemList")
             print(self.itemArray.last!)
         }
         
@@ -65,6 +66,31 @@ class ToDoListViewController: UITableViewController {
         addNewAlert.addAction(addNewAction)
         present(addNewAlert, animated: true, completion: nil)
     }
+    
+    //MARK: Saving Data to Document in User Directory
+    func savaData(){
+        let encoder = PropertyListEncoder()
+        do{
+            let data = try encoder.encode(itemArray)
+            try data.write(to: dataFilePath!)
+            tableView.reloadData()
+        }
+        catch{
+            print("Error Encoding Data for P_list")
+        }
+    }
+    
+    //MARK: Loading data from Property list -- error during calling Data()
+    /*func loadData(){
+        let decoder = PropertyListDecoder()
+        do{
+           let data = try Data(contentOf: dataFilePath!)
+            itemArray = try decoder.decode([Data].self, from: data)
+        }
+        catch{
+                print("error during decoding p_list")
+        }
+    }*/
     
 }
 
