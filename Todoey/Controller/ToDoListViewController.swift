@@ -92,10 +92,11 @@ class ToDoListViewController: UITableViewController{
     }
     
     //MARK: Loading data from Property list -- error during calling Data()
-    func loadData(){
-        let request: NSFetchRequest<Item> = Item.fetchRequest()
+    func loadData(from request: NSFetchRequest<Item> = Item.fetchRequest()){
+        
         do{
             itemsDB = try context.fetch(request)
+            tableView.reloadData()
         }
         catch{
             print("error during fetching data: \(error)")
@@ -112,3 +113,30 @@ class ToDoListViewController: UITableViewController{
     
 }
 
+// MARK: UISearchBar methods
+extension ToDoListViewController: UISearchBarDelegate{
+    
+    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
+        let request: NSFetchRequest<Item> = Item.fetchRequest()
+        request.predicate = NSPredicate(format: "title CONTAINS[cd] %@", searchBar.text!)
+        request.sortDescriptors = [NSSortDescriptor(key: "title", ascending: true)]
+        loadData(from: request)
+        
+    }
+    
+    func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
+        if searchBar.text?.count == 0 {
+            loadData()
+            DispatchQueue.main.async {
+               searchBar.resignFirstResponder()
+            }
+        }
+    }
+    
+    func searchBarCancelButtonClicked(_ searchBar: UISearchBar) {
+        loadData()
+        DispatchQueue.main.async {
+            searchBar.resignFirstResponder()
+        }
+    }
+}
