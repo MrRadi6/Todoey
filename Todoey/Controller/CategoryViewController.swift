@@ -27,6 +27,7 @@ class CategoryViewController: UITableViewController {
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         return catagoryDB.count
     }
+    
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "category", for: indexPath)
         let category = catagoryDB[indexPath.row]
@@ -34,6 +35,16 @@ class CategoryViewController: UITableViewController {
         return cell
     }
     
+    override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        performSegue(withIdentifier: "toItems", sender: self)
+    }
+    
+    override func prepare(for segue: UIStoryboardSegue, sender: Any?) {
+        let destinationVC = segue.destination as! ToDoListViewController
+        if let indexPath = tableView.indexPathForSelectedRow{
+            destinationVC.selectedCategory = catagoryDB[indexPath.row]
+        }
+    }
     //MARK: ADDIGN NEW CATEGORY
     @IBAction func addButtonPressed(_ sender: UIBarButtonItem) {
         var textInput = UITextField()
