@@ -7,15 +7,19 @@
 //
 
 import UIKit
+import CoreData
 
 class ToDoListViewController: UITableViewController{
 
     var itemArray: [Data] = []
+    var itemsDB: [Item] = []
+    let context = (UIApplication.shared.delegate as! AppDelegate).persistentContainer.viewContext
     let dataFilePath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.appendingPathComponent("Items.plist")
    // var defaults = UserDefaults.standard
     
     override func viewDidLoad() {
         super.viewDidLoad()
+        loadData()
         print(dataFilePath!)
         
        /* if let userItems = defaults.array(forKey: "UserItemList") as? [Data]{
@@ -27,23 +31,27 @@ class ToDoListViewController: UITableViewController{
     //MARK: - TableView Data Source Method
     
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return itemArray.count
+        return itemsDB.count
     }
     
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "listItem", for: indexPath)
-        let item = itemArray[indexPath.row]
-        cell.textLabel?.text = item.item
-        cell.accessoryType = item.isChecked ? .checkmark : .none
+        let item = itemsDB[indexPath.row]
+        cell.textLabel?.text = item.title
+        cell.accessoryType = item.done ? .checkmark : .none
         return cell
     }
     
     //MARK: tableView cell tap on
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        itemArray[indexPath.row].isChecked = !itemArray[indexPath.row].isChecked
+        //context.delete(itemsDB[indexPath.row])
+        //itemsDB.remove(at: indexPath.row)
+        //itemsDB[indexPath.row].setValue(!itemsDB[indexPath.row].done, forKey: "done")
+        
+        itemsDB[indexPath.row].done = !itemsDB[indexPath.row].done
         savaData()
-        print(itemArray[indexPath.row])
+        //print(itemsDB[indexPath.row])
     }
     
     //MARK: adding new item
@@ -53,10 +61,12 @@ class ToDoListViewController: UITableViewController{
         let addNewAlert = UIAlertController(title: "Add New Item", message: nil, preferredStyle: .alert)
         let addNewAction = UIAlertAction(title: "ADD NEW", style: .default) {   (action) in
             print("action triggered")
-            self.itemArray.append(Data(item: textField.text!,isChecked: false))
+            let newItem = Item(context: self.context)
+            newItem.title = textField.text
+            self.itemsDB.append(newItem)
             self.savaData()
            // self.defaults.set(self.itemArray, forKey: "UserItemList")
-            print(self.itemArray.last!)
+            print(self.itemsDB.last!)
         }
         
         addNewAlert.addTextField {  (alertTextField) in
@@ -69,28 +79,36 @@ class ToDoListViewController: UITableViewController{
     
     //MARK: Saving Data to Document in User Directory
     func savaData(){
-        let encoder = PropertyListEncoder()
+       // let encoder = PropertyListEncoder()
         do{
-            let data = try encoder.encode(itemArray)
-            try data.write(to: dataFilePath!)
+           // let data = try encoder.encode(itemArray)
+           // try data.write(to: dataFilePath!)
+            try context.save()
             tableView.reloadData()
         }
         catch{
-            print("Error Encoding Data for P_list")
+            print("Error saving Data \(error)")
         }
     }
     
     //MARK: Loading data from Property list -- error during calling Data()
-    /*func loadData(){
-        let decoder = PropertyListDecoder()
+    func loadData(){
+        let request: NSFetchRequest<Item> = Item.fetchRequest()
+        do{
+            itemsDB = try context.fetch(request)
+        }
+        catch{
+            print("error during fetching data: \(error)")
+        }
+        /* let decoder = PropertyListDecoder()
         do{
            let data = try Data(contentOf: dataFilePath!)
             itemArray = try decoder.decode([Data].self, from: data)
         }
         catch{
                 print("error during decoding p_list")
-        }
-    }*/
+        }*/
+    }
     
 }
 
