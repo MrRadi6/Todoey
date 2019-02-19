@@ -28,15 +28,9 @@
 #import "RLMSwiftSupport.h"
 #import "RLMUtil.hpp"
 
-#import "object_schema.hpp"
 #import "object_store.hpp"
 
 using namespace realm;
-
-const Ivar RLMDummySwiftIvar = []() {
-    static int dummy;
-    return reinterpret_cast<objc_ivar *>(&dummy);
-}();
 
 // private properties
 @interface RLMObjectSchema ()
@@ -84,9 +78,7 @@ const Ivar RLMDummySwiftIvar = []() {
             self.primaryKeyProperty = prop;
         }
     }
-    index = 0;
     for (RLMProperty *prop in _computedProperties) {
-        prop.index = index++;
         map[prop.name] = prop;
     }
     _allPropertiesByName = map;
@@ -184,7 +176,6 @@ const Ivar RLMDummySwiftIvar = []() {
     Class objectUtil = [objectClass objectUtilClass:isSwiftClass];
     NSArray *ignoredProperties = [objectUtil ignoredPropertiesForClass:objectClass];
     NSDictionary *linkingObjectsProperties = [objectUtil linkingObjectsPropertiesForClass:objectClass];
-    NSDictionary *columnNameMap = [objectClass _realmColumnNames];
 
     // For Swift classes we need an instance of the object when parsing properties
     id swiftObjectInstance = isSwiftClass ? [[objectClass alloc] init] : nil;
@@ -215,16 +206,12 @@ const Ivar RLMDummySwiftIvar = []() {
         }
 
         if (prop) {
-            if (columnNameMap) {
-                prop.columnName = columnNameMap[prop.name];
-            }
             [propArray addObject:prop];
         }
     }
 
     if (isSwiftClass) {
-        [self addSwiftProperties:propArray objectUtil:objectUtil instance:swiftObjectInstance
-                         indexed:indexed nameMap:columnNameMap];
+        [self addSwiftProperties:propArray objectUtil:objectUtil instance:swiftObjectInstance indexed:indexed];
     }
 
     if (auto requiredProperties = [objectUtil requiredPropertiesForClass:objectClass]) {
@@ -251,8 +238,7 @@ const Ivar RLMDummySwiftIvar = []() {
 + (void)addSwiftProperties:(NSMutableArray<RLMProperty *> *)propArray
                 objectUtil:(Class)objectUtil
                   instance:(id)instance
-                   indexed:(NSSet<NSString *> *)indexed
-                   nameMap:(NSDictionary<NSString *, NSString *> *)columnNameMap {
+                   indexed:(NSSet<NSString *> *)indexed {
     // The property list reported to the obj-c runtime for Swift objects is
     // incomplete and doesn't include Swift generics like List<> and
     // RealmOptional<>, and is missing information for some properties that
@@ -277,17 +263,19 @@ const Ivar RLMDummySwiftIvar = []() {
             return [obj.name isEqualToString:md.propertyName];
         }];
 
-        RLMProperty *prop;
         switch (md.kind) {
             case RLMSwiftPropertyKindList: // List<>
-                prop = [[RLMProperty alloc] initSwiftListPropertyWithName:md.propertyName instance:instance];
+                [propArray insertObject:[[RLMProperty alloc] initSwiftListPropertyWithName:md.propertyName
+                                                                                  instance:instance]
+                                atIndex:nextIndex];
                 break;
             case RLMSwiftPropertyKindLinkingObjects: { // LinkingObjects<>
                 Ivar ivar = class_getInstanceVariable([instance class], md.propertyName.UTF8String);
-                prop = [[RLMProperty alloc] initSwiftLinkingObjectsPropertyWithName:md.propertyName
-                                                                               ivar:ivar
-                                                                    objectClassName:md.className
-                                                             linkOriginPropertyName:md.linkedPropertyName];
+                [propArray insertObject:[[RLMProperty alloc] initSwiftLinkingObjectsPropertyWithName:md.propertyName
+                                                                                                ivar:ivar
+                                                                                     objectClassName:md.className
+                                                                              linkOriginPropertyName:md.linkedPropertyName]
+                                atIndex:nextIndex];
                 break;
             }
             case RLMSwiftPropertyKindOptional: {
@@ -298,22 +286,14 @@ const Ivar RLMDummySwiftIvar = []() {
                     break;
                 }
 
-                Ivar ivar;
-                if (md.propertyType == RLMPropertyTypeString) {
-                    // FIXME: A non-@objc dynamic String? property which we
-                    // can't actually read so we're always just going to pretend it's nil
-                    // https://github.com/realm/realm-cocoa/issues/5784
-                    ivar = RLMDummySwiftIvar;
-                }
-                else {
-                    // RealmOptional<>
-                    ivar = class_getInstanceVariable([instance class], md.propertyName.UTF8String);
-                }
-
-                prop = [[RLMProperty alloc] initSwiftOptionalPropertyWithName:md.propertyName
-                                                                      indexed:[indexed containsObject:md.propertyName]
-                                                                         ivar:ivar
-                                                                 propertyType:md.propertyType];
+                // RealmOptional<>
+                Ivar ivar = class_getInstanceVariable([instance class], md.propertyName.UTF8String);
+                BOOL isIndexed = [indexed containsObject:md.propertyName];
+                [propArray insertObject:[[RLMProperty alloc] initSwiftOptionalPropertyWithName:md.propertyName
+                                                                                       indexed:isIndexed
+                                                                                          ivar:ivar
+                                                                                  propertyType:md.propertyType]
+                                atIndex:nextIndex];
                 break;
             }
 
@@ -337,13 +317,6 @@ const Ivar RLMDummySwiftIvar = []() {
                     propArray[existing].optional = false;
                 }
                 break;
-        }
-
-        if (prop) {
-            if (columnNameMap) {
-                prop.columnName = columnNameMap[prop.name];
-            }
-            [propArray insertObject:prop atIndex:nextIndex];
         }
 
         ++nextIndex;
@@ -396,17 +369,17 @@ const Ivar RLMDummySwiftIvar = []() {
     return [self.objectClass _realmObjectName] ?: _className;
 }
 
-- (realm::ObjectSchema)objectStoreCopy:(RLMSchema *)schema {
+- (realm::ObjectSchema)objectStoreCopy {
     ObjectSchema objectSchema;
     objectSchema.name = self.objectName.UTF8String;
-    objectSchema.primary_key = _primaryKeyProperty ? _primaryKeyProperty.columnName.UTF8String : "";
+    objectSchema.primary_key = _primaryKeyProperty ? _primaryKeyProperty.name.UTF8String : "";
     for (RLMProperty *prop in _properties) {
-        Property p = [prop objectStoreCopy:schema];
+        Property p = [prop objectStoreCopy];
         p.is_primary = (prop == _primaryKeyProperty);
         objectSchema.persisted_properties.push_back(std::move(p));
     }
     for (RLMProperty *prop in _computedProperties) {
-        objectSchema.computed_properties.push_back([prop objectStoreCopy:schema]);
+        objectSchema.computed_properties.push_back([prop objectStoreCopy]);
     }
     return objectSchema;
 }

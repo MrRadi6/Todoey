@@ -189,7 +189,8 @@ void RLMObservationInfo::recordObserver(realm::Row& objectRow, RLMClassInfo *obj
     }
     else if (auto swiftIvar = prop.swiftIvar) {
         if (auto optional = RLMDynamicCast<RLMOptionalBase>(object_getIvar(object, swiftIvar))) {
-            RLMInitializeUnmanagedOptional(optional, object, prop);
+            optional.property = prop;
+            optional.object = object;
         }
     }
 }
@@ -279,7 +280,7 @@ void RLMClearTable(RLMClassInfo &objectSchema) {
     }
 
     RLMTrackDeletions(objectSchema.realm, ^{
-        Results(objectSchema.realm->_realm, *objectSchema.table()).clear();
+        objectSchema.table()->clear();
 
         for (auto info : objectSchema.observedObjects) {
             info->prepareForInvalidation();

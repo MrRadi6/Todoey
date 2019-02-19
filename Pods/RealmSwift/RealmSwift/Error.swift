@@ -83,7 +83,7 @@ extension Realm {
         }
 
         /// :nodoc:
-        public let _nsError: NSError
+        public var _nsError: NSError
 
         /// :nodoc:
         public init(_nsError error: NSError) {
@@ -104,9 +104,7 @@ extension Realm {
 // Provide bridging from errors with domain RLMErrorDomain to Error.
 extension Realm.Error: _BridgedStoredNSError {
     /// :nodoc:
-    public static let _nsErrorDomain = RLMErrorDomain
-    /// :nodoc:
-    public static let errorDomain = RLMErrorDomain
+    public static var _nsErrorDomain = RLMErrorDomain
 }
 
 // MARK: Equatable

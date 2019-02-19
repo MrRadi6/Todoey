@@ -25,7 +25,6 @@
 #include <cstdio>
 #include <algorithm>
 #include <functional>
-#include <time.h>
 
 #ifdef _WIN32
 
@@ -130,7 +129,6 @@ void millisleep(unsigned long milliseconds);
 int gettimeofday(struct timeval * tp, struct timezone * tzp);
 #endif
 
-int64_t platform_timegm(tm time);
 
 #ifdef REALM_SLAB_ALLOC_TUNE
 void process_mem_usage(double& vm_usage, double& resident_set);

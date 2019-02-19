@@ -8,15 +8,25 @@
 
 import UIKit
 import CoreData
+import RealmSwift
 
-class ToDoListViewController: UITableViewController{
+class ToDoListViewController: SwipeTableViewCellController{
 
-    var itemArray: [Data] = []
-    var itemsDB: [Item] = []
-    let context = (UIApplication.shared.delegate as! AppDelegate).persistentContainer.viewContext
-    let dataFilePath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.appendingPathComponent("Items.plist")
-    var selectedCategory: Category?{
+//    var itemArray: [Data] = []
+//    var itemsDB: [Item] = []
+    let realmObj = try! Realm()
+    var itemsDB: Results<ItemRealm>!
+//    let context = (UIApplication.shared.delegate as! AppDelegate).persistentContainer.viewContext
+//    let dataFilePath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.appendingPathComponent("Items.plist")
+   
+//    var selectedCategory: Category?{
+//        didSet{
+//            loadData()
+//        }
+//    }
+    var selectedCatagory: CatagoryRealm?{
         didSet{
+            print("catagory is set to: \(String(describing: selectedCatagory?.name))")
             loadData()
         }
     }
@@ -24,7 +34,8 @@ class ToDoListViewController: UITableViewController{
     
     override func viewDidLoad() {
         super.viewDidLoad()
-                print(dataFilePath!)
+        tableView.rowHeight = 80.0
+//        print(dataFilePath!)
         
        /* if let userItems = defaults.array(forKey: "UserItemList") as? [Data]{
             itemArray = userItems
@@ -35,25 +46,44 @@ class ToDoListViewController: UITableViewController{
     //MARK: - TableView Data Source Method
     
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return itemsDB.count
+        return itemsDB?.count ?? 1
     }
     
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "listItem", for: indexPath)
-        let item = itemsDB[indexPath.row]
-        cell.textLabel?.text = item.title
-        cell.accessoryType = item.done ? .checkmark : .none
+        let cell = super.tableView(tableView, cellForRowAt: indexPath)
+        if let item = itemsDB?[indexPath.row]{
+            cell.textLabel?.text = item.title
+            cell.accessoryType = item.done ? .checkmark : .none
+            print("Item Added to Screen")
+        }
+        else{
+            print("No Item to add to Screen")
+            cell.textLabel?.text = "No items Added yed!"
+        }
+        
         return cell
     }
     
     //MARK: tableView cell tap on
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        if let item = itemsDB?[indexPath.row]{
+            do{
+                try realmObj.write {
+//                    item.done = !item.done
+                    realmObj.delete(item)
+                    tableView.reloadData()
+                }
+            }
+            catch{
+                print("error modifing Status ERROR: \(error)")
+            }
+        }
         tableView.deselectRow(at: indexPath, animated: true)
         //context.delete(itemsDB[indexPath.row])
         //itemsDB.remove(at: indexPath.row)
         //itemsDB[indexPath.row].setValue(!itemsDB[indexPath.row].done, forKey: "done")
         
-        itemsDB[indexPath.row].done = !itemsDB[indexPath.row].done
+        //itemsDB[indexPath.row].done = !itemsDB[indexPath.row].done
         savaData()
         //print(itemsDB[indexPath.row])
     }
@@ -65,13 +95,27 @@ class ToDoListViewController: UITableViewController{
         let addNewAlert = UIAlertController(title: "Add New Item", message: nil, preferredStyle: .alert)
         let addNewAction = UIAlertAction(title: "ADD NEW", style: .default) {   (action) in
             print("action triggered")
-            let newItem = Item(context: self.context)
-            newItem.title = textField.text
-            newItem.parentCategory = self.selectedCategory
-            self.itemsDB.append(newItem)
-            self.savaData()
-           // self.defaults.set(self.itemArray, forKey: "UserItemList")
-            print(self.itemsDB.last!)
+//            let newItem = Item(context: self.context)
+//            newItem.title = textField.text
+//            newItem.parentCategory = self.selectedCategory
+//            self.itemsDB.append(newItem)
+//            self.savaData()
+           // self.defaults.set(self.itemArray, forKey: "UserItemList") // saving data using user defaults
+            if let currentCatagory = self.selectedCatagory{
+                do{
+                    try self.realmObj.write {
+                        let newItem = ItemRealm()
+                        newItem.title = textField.text!
+                        currentCatagory.items.append(newItem)
+                    }
+                    
+                }
+                catch{
+                    print("Can not save data to realm Error code: \(error)")
+                }
+                
+            }
+            self.tableView.reloadData()
         }
         
         addNewAlert.addTextField {  (alertTextField) in
@@ -82,45 +126,52 @@ class ToDoListViewController: UITableViewController{
         present(addNewAlert, animated: true, completion: nil)
     }
     
+    //MARK: -Deleting Cell At Index Path
+    override func deleteCellAtIndex(at indexPath: IndexPath) {
+        if let cellToDelete = itemsDB?[indexPath.row]{
+            do{
+                try realmObj.write {
+                    self.realmObj.delete(cellToDelete)
+                }
+            }
+            catch{
+                print("Error Deleting Cell ERROR:\(error)")
+            }
+        }
+    }
     //MARK: Saving Data to Document in User Directory
     func savaData(){
        // let encoder = PropertyListEncoder()
-        do{
-           // let data = try encoder.encode(itemArray)
-           // try data.write(to: dataFilePath!)
-            try context.save()
-            tableView.reloadData()
-        }
-        catch{
-            print("Error saving Data \(error)")
-        }
+//        do{
+//           // let data = try encoder.encode(itemArray)
+//           // try data.write(to: dataFilePath!)
+//            try context.save()
+//            tableView.reloadData()
+//        }
+//        catch{
+//            print("Error saving Data \(error)")
+//        }
     }
     
     //MARK: Loading data from Property list -- error during calling Data()
     func loadData(from request: NSFetchRequest<Item> = Item.fetchRequest(), rule predicate:NSPredicate? = nil){
         
-        let categoryPredicate = NSPredicate(format: "parentCategory.name MATCHES %@", (selectedCategory?.name)!)
-        do{
-            if let additionalPredicate = predicate{
-                request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [categoryPredicate,additionalPredicate])
-            }
-            else{
-                request.predicate = categoryPredicate
-            }
-            itemsDB = try context.fetch(request)
-            tableView.reloadData()
-        }
-        catch{
-            print("error during fetching data: \(error)")
-        }
-        /* let decoder = PropertyListDecoder()
-        do{
-           let data = try Data(contentOf: dataFilePath!)
-            itemArray = try decoder.decode([Data].self, from: data)
-        }
-        catch{
-                print("error during decoding p_list")
-        }*/
+//        let categoryPredicate = NSPredicate(format: "parentCategory.name MATCHES %@", (selectedCategory?.name)!)
+//        do{
+//            if let additionalPredicate = predicate{
+//                request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [categoryPredicate,additionalPredicate])
+//            }
+//            else{
+//                request.predicate = categoryPredicate
+//            }
+//            itemsDB = try context.fetch(request)
+//            tableView.reloadData()
+//        }
+//        catch{
+//            print("error during fetching data: \(error)")
+//        }
+        itemsDB = selectedCatagory?.items.sorted(byKeyPath: "title", ascending: true)
+        tableView.reloadData()
     }
     
 }
@@ -128,14 +179,17 @@ class ToDoListViewController: UITableViewController{
 // MARK: UISearchBar methods
 extension ToDoListViewController: UISearchBarDelegate{
     
+//    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
+//        let request: NSFetchRequest<Item> = Item.fetchRequest()
+//        let predicate = NSPredicate(format: "title CONTAINS[cd] %@", searchBar.text!)
+//        request.sortDescriptors = [NSSortDescriptor(key: "title", ascending: true)]
+//        loadData(from: request,rule: predicate)
+//
+//    }
     func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
-        let request: NSFetchRequest<Item> = Item.fetchRequest()
-        let predicate = NSPredicate(format: "title CONTAINS[cd] %@", searchBar.text!)
-        request.sortDescriptors = [NSSortDescriptor(key: "title", ascending: true)]
-        loadData(from: request,rule: predicate)
-        
+        itemsDB = itemsDB?.filter("title CONTAINS[cd] %@",searchBar.text!).sorted(byKeyPath: "dateCreated", ascending: true)
+        tableView.reloadData()
     }
-    
     func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
         if searchBar.text?.count == 0 {
             loadData()

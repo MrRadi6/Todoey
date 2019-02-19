@@ -69,6 +69,7 @@ import Realm.Private
 @objc(RealmSwiftObject)
 open class Object: RLMObjectBase, ThreadConfined, RealmCollectionValue {
     /// :nodoc:
+    // swiftlint:disable:next identifier_name
     public static func _rlmArray() -> RLMArray<AnyObject> {
         return RLMArray(objectClassName: className())
     }
@@ -371,11 +372,6 @@ public final class DynamicObject: Object {
     }
 
     /// :nodoc:
-    public override func dynamicList(_ propertyName: String) -> List<DynamicObject> {
-        return self[propertyName] as! List<DynamicObject>
-    }
-
-    /// :nodoc:
     public override func value(forUndefinedKey key: String) -> Any? {
         return self[key]
     }
@@ -506,7 +502,7 @@ public class ObjectUtil: NSObject {
     }
 
     @objc private class func getSwiftProperties(_ object: Any) -> [RLMSwiftPropertyMetadata] {
-        return getNonIgnoredMirrorChildren(for: object).enumerated().map { idx, prop in
+        return getNonIgnoredMirrorChildren(for: object).enumerated().flatMap { idx, prop in
             if let value = prop.value as? LinkingObjectsBase {
                 return RLMSwiftPropertyMetadata(forLinkingObjectsProperty: prop.label!,
                                                 className: value.objectClassName,

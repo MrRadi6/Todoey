@@ -8,13 +8,18 @@
 
 import UIKit
 import CoreData
+import RealmSwift
 
-class CategoryViewController: UITableViewController {
+class CategoryViewController:SwipeTableViewCellController {
 
-    let context = (UIApplication.shared.delegate as! AppDelegate).persistentContainer.viewContext
-    var catagoryDB: [Category] = []
+//    let context = (UIApplication.shared.delegate as! AppDelegate).persistentContainer.viewContext
+//    var catagoryDB: [Category] = []
+    let realmObj = try! Realm()
+    var catagoryDB: Results<CatagoryRealm>!
+    
     override func viewDidLoad() {
         super.viewDidLoad()
+        tableView.rowHeight = 80.0
         reloadData()
         // Uncomment the following line to preserve selection between presentations
         // self.clearsSelectionOnViewWillAppear = false
@@ -25,13 +30,12 @@ class CategoryViewController: UITableViewController {
 
     //MARK: Data Source Methods
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return catagoryDB.count
+        return catagoryDB?.count ?? 1
     }
     
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "category", for: indexPath)
-        let category = catagoryDB[indexPath.row]
-        cell.textLabel?.text = category.name
+        let cell = super.tableView(tableView, cellForRowAt: indexPath)
+        cell.textLabel?.text = catagoryDB?[indexPath.row].name ?? "There is no saved Catagory"
         return cell
     }
     
@@ -42,18 +46,20 @@ class CategoryViewController: UITableViewController {
     override func prepare(for segue: UIStoryboardSegue, sender: Any?) {
         let destinationVC = segue.destination as! ToDoListViewController
         if let indexPath = tableView.indexPathForSelectedRow{
-            destinationVC.selectedCategory = catagoryDB[indexPath.row]
+            destinationVC.selectedCatagory = catagoryDB?[indexPath.row]
         }
     }
+    
     //MARK: ADDIGN NEW CATEGORY
     @IBAction func addButtonPressed(_ sender: UIBarButtonItem) {
         var textInput = UITextField()
         let alert = UIAlertController(title: "Category", message: "Enter new Category", preferredStyle: .alert)
         let action = UIAlertAction(title: "ADD", style: .default) { (action) in
-            let newCatagory = Category(context: self.context)
-            newCatagory.name = textInput.text
-            self.catagoryDB.append(newCatagory)
-            self.savaData()
+//            let newCatagory = Category(context: self.context)
+            let newCatagory: CatagoryRealm = CatagoryRealm()
+            newCatagory.name = textInput.text!
+//            self.catagoryDB.append(newCatagory)
+            self.savaData(catagory: newCatagory)
         }
         alert.addTextField { (textFielt) in
             textFielt.placeholder = "New Category"
@@ -65,24 +71,44 @@ class CategoryViewController: UITableViewController {
     }
     
     //MARK: SAVING TO DATABASE
-    func savaData(){
+    func savaData(catagory: CatagoryRealm){
         do{
-            try context.save()
+//            try context.save()
+            try realmObj.write {
+                realmObj.add(catagory)
+            }
             tableView.reloadData()
         }
         catch{
             print("error while saving data to DB \(error)")
         }
     }
+    
     //MARK: RELOAD THE DATA FROM THE DATABASE
     func reloadData(from request:NSFetchRequest<Category> = Category.fetchRequest()){
-        do{
-            try catagoryDB = context.fetch(request)
-            tableView.reloadData()
-        }
-        catch{
-            print("error while reloading DB \(error)")
-        }
+        catagoryDB = realmObj.objects(CatagoryRealm.self)
+//        do{
+//            try catagoryDB = context.fetch(request)
+//            tableView.reloadData()
+//        }
+//        catch{
+//            print("error while reloading DB \(error)")
+//        }
     }
     
+    //MARK: - DELETE THE SELECTED CELL
+    override func deleteCellAtIndex(at indexPath: IndexPath) {
+        if let cellToDelete = self.catagoryDB?[indexPath.row]{
+            do{
+                try self.realmObj.write {
+                    self.realmObj.delete(cellToDelete)
+                    //self.tableView.reloadData()
+                }
+            }
+            catch{
+                print("Error Deleting cell Error: \(error)")
+            }
+        }
+
+    }
 }

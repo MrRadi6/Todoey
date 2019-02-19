@@ -40,11 +40,6 @@
 
 using namespace realm;
 
-@interface LinkingObjectsBase : NSObject
-@property (nonatomic, nullable) RLMWeakObjectHandle *object;
-@property (nonatomic, nullable) RLMProperty *property;
-@end
-
 void RLMRealmCreateAccessors(RLMSchema *schema) {
     const size_t bufferSize = sizeof("RLM:Managed  ") // includes null terminator
                             + std::numeric_limits<unsigned long long>::digits10
@@ -90,24 +85,19 @@ void RLMInitializeSwiftAccessorGenerics(__unsafe_unretained RLMObjectBase *const
     }
 
     for (RLMProperty *prop in object->_objectSchema.swiftGenericProperties) {
-        if (prop.swiftIvar == RLMDummySwiftIvar) {
-            // FIXME: this should actually be an error as it's the result of an
-            // invalid object definition, but that's a breaking change so
-            // instead preserve the old behavior until the next major version bump
-            // https://github.com/realm/realm-cocoa/issues/5784
-            continue;
-        }
-        id ivar = object_getIvar(object, prop.swiftIvar);
         if (prop.type == RLMPropertyTypeLinkingObjects) {
-            [ivar setObject:(id)[[RLMWeakObjectHandle alloc] initWithObject:object]];
-            [ivar setProperty:prop];
+            id linkingObjects = object_getIvar(object, prop.swiftIvar);
+            [linkingObjects setObject:(id)[[RLMWeakObjectHandle alloc] initWithObject:object]];
+            [linkingObjects setProperty:prop];
         }
         else if (prop.array) {
             RLMArray *array = [[RLMManagedArray alloc] initWithParent:object property:prop];
-            [ivar set_rlmArray:array];
+            [object_getIvar(object, prop.swiftIvar) set_rlmArray:array];
         }
         else {
-            RLMInitializeManagedOptional(ivar, object, prop);
+            RLMOptionalBase *optional = object_getIvar(object, prop.swiftIvar);
+            optional.property = prop;
+            optional.object = object;
         }
     }
 }
@@ -140,7 +130,7 @@ void RLMAddObjectToRealm(__unsafe_unretained RLMObjectBase *const object,
     object->_objectSchema = info.rlmObjectSchema;
     try {
         realm::Object::create(c, realm->_realm, *info.objectSchema, (id)object,
-                              createOrUpdate, /* diff */ false, -1, &object->_row);
+                              createOrUpdate, &object->_row);
     }
     catch (std::exception const& e) {
         @throw RLMException(e);
@@ -239,13 +229,13 @@ RLMResults *RLMGetObjects(__unsafe_unretained RLMRealm *const realm,
 id RLMGetObject(RLMRealm *realm, NSString *objectClassName, id key) {
     RLMVerifyRealmRead(realm);
 
+    RLMAccessorContext *c = nullptr;
     auto& info = realm->_info[objectClassName];
     if (RLMProperty *prop = info.propertyForPrimaryKey()) {
         RLMValidateValueForProperty(key, info.rlmObjectSchema, prop);
     }
     try {
-        RLMAccessorContext c{realm, info};
-        auto obj = realm::Object::get_for_primary_key(c, realm->_realm, *info.objectSchema,
+        auto obj = realm::Object::get_for_primary_key(*c, realm->_realm, *info.objectSchema,
                                                       key ?: NSNull.null);
         if (!obj.is_valid())
             return nil;

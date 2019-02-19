@@ -37,9 +37,8 @@ SyncManager& SyncManager::shared()
     return manager;
 }
 
-void SyncManager::configure(const std::string& base_file_path,
+void SyncManager::configure_file_system(const std::string& base_file_path,
                                         MetadataMode metadata_mode,
-                                        const std::string& user_agent_binding_info,
                                         util::Optional<std::vector<char>> custom_encryption_key,
                                         bool reset_metadata_on_error)
 {
@@ -49,8 +48,6 @@ void SyncManager::configure(const std::string& base_file_path,
         std::string server_url;
         bool is_admin;
     };
-
-    m_user_agent_binding_info = user_agent_binding_info;
 
     std::vector<UserCreationData> users_to_add;
     {
@@ -92,8 +89,6 @@ void SyncManager::configure(const std::string& base_file_path,
         }
 
         REALM_ASSERT(m_metadata_manager);
-        m_client_uuid = m_metadata_manager->client_uuid();
-
         // Perform any necessary file actions.
         std::vector<SyncFileActionMetadata> completed_actions;
         SyncFileActionMetadataResults file_actions = m_metadata_manager->all_pending_actions();
@@ -201,8 +196,6 @@ void SyncManager::reset_for_testing()
     std::lock_guard<std::mutex> lock(m_file_system_mutex);
     m_file_manager = nullptr;
     m_metadata_manager = nullptr;
-    m_client_uuid = util::none;
-
     {
         // Destroy all the users.
         std::lock_guard<std::mutex> lock(m_user_mutex);
@@ -242,7 +235,6 @@ void SyncManager::reset_for_testing()
         m_log_level = util::Logger::Level::info;
         m_logger_factory = nullptr;
         m_client_reconnect_mode = ReconnectMode::normal;
-        m_multiplex_sessions = false;
     }
 }
 
@@ -258,10 +250,16 @@ void SyncManager::set_logger_factory(SyncLoggerFactory& factory) noexcept
     m_logger_factory = &factory;
 }
 
-void SyncManager::set_user_agent(std::string user_agent)
+void SyncManager::set_client_should_reconnect_immediately(bool reconnect_immediately)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
-    m_user_agent_application_info = std::move(user_agent);
+    m_client_reconnect_mode = reconnect_immediately ? ReconnectMode::immediate : ReconnectMode::normal;
+}
+
+bool SyncManager::client_should_reconnect_immediately() const noexcept
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_client_reconnect_mode == ReconnectMode::immediate;
 }
 
 void SyncManager::reconnect()
@@ -412,7 +410,12 @@ std::string SyncManager::path_for_realm(const SyncUser& user, const std::string&
 {
     std::lock_guard<std::mutex> lock(m_file_system_mutex);
     REALM_ASSERT(m_file_manager);
-    return m_file_manager->path(user.local_identity(), raw_realm_url);
+    const auto& user_local_identity = user.local_identity();
+    util::Optional<SyncUserIdentifier> user_info;
+    if (user.token_type() == SyncUser::TokenType::Normal)
+        user_info = SyncUserIdentifier{ user.identity(), user.server_url() };
+
+    return m_file_manager->path(user_local_identity, raw_realm_url, std::move(user_info));
 }
 
 std::string SyncManager::recovery_directory_path() const
@@ -485,14 +488,6 @@ void SyncManager::unregister_session(const std::string& path)
     m_sessions.erase(path);
 }
 
-void SyncManager::enable_session_multiplexing()
-{
-    std::lock_guard<std::mutex> lock(m_mutex);
-    if (m_sync_client)
-        throw std::logic_error("Cannot enable session multiplexing after creating the sync client");
-    m_multiplex_sessions = true;
-}
-
 SyncClient& SyncManager::get_sync_client() const
 {
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -514,13 +509,12 @@ std::unique_ptr<SyncClient> SyncManager::create_sync_client() const
         stderr_logger->set_level_threshold(m_log_level);
         logger = std::move(stderr_logger);
     }
-
-    return std::make_unique<SyncClient>(std::move(logger), m_client_reconnect_mode, m_multiplex_sessions,
-                                        util::format("%1 %2", m_user_agent_binding_info, m_user_agent_application_info));
+    return std::make_unique<SyncClient>(std::move(logger),
+                                        m_client_reconnect_mode);
 }
 
 std::string SyncManager::client_uuid() const
 {
-    REALM_ASSERT(m_client_uuid);
-    return *m_client_uuid;
+    REALM_ASSERT(m_metadata_manager);
+    return m_metadata_manager->client_uuid();
 }

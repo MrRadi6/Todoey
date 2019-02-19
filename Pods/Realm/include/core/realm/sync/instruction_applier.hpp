@@ -21,7 +21,6 @@
 
 #include <realm/sync/instructions.hpp>
 #include <realm/sync/changeset.hpp>
-#include <realm/sync/object.hpp>
 #include <realm/util/logger.hpp>
 
 namespace realm {
@@ -30,17 +29,9 @@ namespace sync {
 struct Changeset;
 
 struct InstructionApplier {
-    explicit InstructionApplier(Group& group, TableInfoCache& table_info_cache) noexcept;
+    explicit InstructionApplier(Group& group) noexcept;
 
-    /// Throws BadChangesetError if application fails due to a problem with the
-    /// changeset.
-    ///
-    /// FIXME: Consider using std::error_code instead of throwing
-    /// BadChangesetError.
     void apply(const Changeset& log, util::Logger* logger);
-
-    void begin_apply(const Changeset& log, util::Logger* logger) noexcept;
-    void end_apply() noexcept;
 
 protected:
     StringData get_string(InternString) const;
@@ -52,11 +43,10 @@ protected:
 
     template<class A> static void apply(A& applier, const Changeset& log, util::Logger* logger);
 
-    Group& m_group;
-    TableInfoCache& m_table_info_cache;
 private:
     const Changeset* m_log = nullptr;
     util::Logger* m_logger = nullptr;
+    Group& m_group;
     TableRef m_selected_table;
     TableRef m_selected_array;
     LinkViewRef m_selected_link_list;
@@ -80,41 +70,26 @@ private:
 
 // Implementation
 
-inline InstructionApplier::InstructionApplier(Group& group, TableInfoCache& table_info_cache) noexcept:
-    m_group(group),
-    m_table_info_cache(table_info_cache)
+inline InstructionApplier::InstructionApplier(Group& group) noexcept:
+    m_group(group)
 {
-}
-
-inline void InstructionApplier::begin_apply(const Changeset& log, util::Logger* logger) noexcept
-{
-    m_log = &log;
-    m_logger = logger;
-}
-
-inline void InstructionApplier::end_apply() noexcept
-{
-    m_log = nullptr;
-    m_logger = nullptr;
-    m_selected_table = TableRef{};
-    m_selected_array = TableRef{};
-    m_selected_link_list = LinkViewRef{};
-    m_link_target_table = TableRef{};
 }
 
 template<class A>
 inline void InstructionApplier::apply(A& applier, const Changeset& log, util::Logger* logger)
 {
-    applier.begin_apply(log, logger);
+    applier.m_log = &log;
+    applier.m_logger = logger;
     for (auto instr: log) {
         if (!instr)
             continue;
         instr->visit(applier); // Throws
-#if REALM_DEBUG
-        applier.m_table_info_cache.verify();
-#endif
     }
-    applier.end_apply();
+    applier.m_log = nullptr;
+    applier.m_logger = nullptr;
+    applier.m_selected_table = TableRef{};
+    applier.m_selected_link_list = LinkViewRef{};
+    applier.m_link_target_table = TableRef{};
 }
 
 inline void InstructionApplier::apply(const Changeset& log, util::Logger* logger)
